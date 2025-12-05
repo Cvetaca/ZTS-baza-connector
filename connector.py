@@ -746,8 +746,8 @@ class TabornikiClient:
 def main():
     """Main function demonstrating usage."""
     client = TabornikiClient(
-        email=os.environ.get("EMAIL"),
-        password=os.environ.get("PASSWORD")
+        email=os.environ.get("CONNECTOR_EMAIL"),
+        password=os.environ.get("CONNECTOR_PASSWORD")
     )
     
     # Login

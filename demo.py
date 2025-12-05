@@ -22,8 +22,8 @@ load_dotenv()
 
 # Create client with credentials
 client = TabornikiClient(
-    email=os.environ.get("EMAIL"),
-    password=os.environ.get("PASSWORD")
+    email=os.environ.get("CONNECTOR_EMAIL"),
+    password=os.environ.get("CONNECTOR_PASSWORD")
 )
 
 # Login (returns status code, 0 = success)

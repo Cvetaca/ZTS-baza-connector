@@ -20,7 +20,7 @@ pip install -r requirements.txt
 ```python
 from clanarina import TabornikiClient
 
-# Initialize client (or use EMAIL and PASSWORD env vars)
+# Initialize client (or use CONNECTOR_EMAIL and CONNECTOR_PASSWORD env vars)
 client = TabornikiClient(
     email="your-email@example.com",
     password="your-password"
@@ -73,5 +73,5 @@ client.logout()
 
 ## Environment Variables
 
-- `EMAIL` - Login email
-- `PASSWORD` - Login password
+- `CONNECTOR_EMAIL` - Login email
+- `CONNECTOR_PASSWORD` - Login password
