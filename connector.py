@@ -595,6 +595,7 @@ class TabornikiClient:
                 return self.OK, members[0]
             
             # Multiple members found - match by date_of_birth if provided
+            
             if date_of_birth:
                 for member in members:
                     if member.get("date_of_birth") == date_of_birth:
