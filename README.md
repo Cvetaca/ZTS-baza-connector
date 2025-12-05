@@ -18,41 +18,75 @@ pip install -r requirements.txt
 ## Usage
 
 ```python
-from clanarina import TabornikiClient
+#!/usr/bin/env python3
+"""
+Simple demo for using TabornikiClient from clanarina.py
 
-# Initialize client (or use CONNECTOR_EMAIL and CONNECTOR_PASSWORD env vars)
+STATUS CODES (from TabornikiClient):
+    0  = Success (OK)
+    1  = Login failed
+    2  = Member not found
+    3  = Member creation failed
+    4  = Membership import failed
+    5  = Network error
+    6  = Invalid input
+    7  = Session error
+    8  = Permission denied
+    9  = Unknown error
+"""
+
+from connector import TabornikiClient
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
+# Create client with credentials
 client = TabornikiClient(
-    email="your-email@example.com",
-    password="your-password"
+    email=os.environ.get("CONNECTOR_EMAIL"),
+    password=os.environ.get("CONNECTOR_PASSWORD")
 )
 
-# Login
+# Login (returns status code, 0 = success)
 status = client.login()
-if status != TabornikiClient.OK:
-    print(f"Login failed: {client.last_error}")
+if status != 0:
+    print(f"Login failed! Error: {client.last_error}")
     exit(1)
 
-# Search for a member
-status, member = client.search_member("Ime Priimek")
-if status == TabornikiClient.OK:
-    print(f"Found: {member['name']} {member['surname']} (#{member['number']})")
+# ----- DEMO 1: Import membership for existing members -----
+print("\n=== Import Membership Demo ===")
+member_numbers = [2323, 23232] # Replace with actual member numbers from ROD
+status = client.import_membership(member_numbers)
+if status == 0:
+    print("Import successful!")
+else:
+    print(f"Import failed (status {status}): {client.last_error}")
 
-# Create a new member
+# ----- DEMO 2: Create a new member -----
+print("\n=== Create Member Demo ===")
 status, member_number = client.create_member(
-    name="Ime",
-    surname="Priimek",
-    sex="M",  # or "F"
-    date_of_birth="2000-01-15",
+    name="Janez",
+    surname="Novak",
+    sex="M",
+    date_of_birth="2000-01-01",
     phone="+386 40 123 456",
-    email="clan@example.com",
-    address="Ulica 1",
-    postal_code="1000"
+    email="janez.novak@someemail.com",
+    address="Glavna ulica 10",
+    postal_code="5000"
 )
+if status == 0:
+    print(f"Member created! Number: {member_number}")
+else:
+    print(f"Creation failed (status {status}): {client.last_error}")
 
-# Import membership for existing members
-status = client.import_membership([12345, 67890])
+# ----- DEMO 3: Search for a member -----
+print("\n=== Search Member Demo ===")
+status, member = client.search_member("Janez Novak")
+if status == 0 and member:
+    print(f"Found: {member['name']} {member['surname']} (#{member['number']})")
+else:
+    print(f"Search failed (status {status}): {client.last_error}")
 
-# Logout
+# Logout when done
 client.logout()
 ```
 
