@@ -15,7 +15,7 @@ STATUS CODES (from TabornikiClient):
     9  = Unknown error
 """
 
-from clanarina import TabornikiClient
+from connector import TabornikiClient
 from dotenv import load_dotenv
 import os
 load_dotenv()
