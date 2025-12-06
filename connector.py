@@ -775,7 +775,7 @@ def main():
                 else:
                     print(f"Failed to create member (status {status}): {client.last_error}")
             else:
-                member_numbers = input("Enter member numbers to import (comma-separated): ")
+                member_numbers = input("Enter ZTS numbers to import (comma-separated): ")
                 member_numbers = [int(num.strip()) for num in member_numbers.split(",") if num.strip().isdigit()]
                 status = client.import_membership(member_numbers)
                 if status == TabornikiClient.OK:

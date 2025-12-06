@@ -51,7 +51,7 @@ status, member_number = client.create_member(
     phone="+386 40 123 456",
     email="janez.novak@someemail.com",
     address="Glavna ulica 10",
-    postal_code="5000"
+    postal_code=5000
 )
 if status == 0:
     print(f"Member created! Number: {member_number}")
