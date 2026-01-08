@@ -632,7 +632,7 @@ class TabornikiClient:
         Args:
             name: First name
             surname: Last name
-            sex: "M" or "F"
+            sex: "M" or "F" or "O"
             date_of_birth: Date of birth (format: YYYY-MM-DD)
             phone: Phone number (e.g., "+386 12345678")
             email: Email address
