@@ -23,9 +23,6 @@ import os
 import re
 from urllib.parse import unquote
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -744,6 +741,9 @@ class TabornikiClient:
 
 
 def main():
+    from dotenv import load_dotenv
+
+    load_dotenv()
     """Main function demonstrating usage."""
     client = TabornikiClient(
         email=os.environ.get("CONNECTOR_EMAIL"),
