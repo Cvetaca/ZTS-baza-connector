@@ -24,11 +24,12 @@ import re
 from urllib.parse import unquote
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import uuid
 
-load_dotenv()
+
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("TabornikiClient")
@@ -75,6 +76,7 @@ class TabornikiClient:
         self.is_authenticated = False
         self.group_id = None  # Will be set during login
         self.last_error = None  # Store last error message
+        self.inertia_version = None  # Will be extracted from responses
         
         # Set up default headers to mimic browser
         self.session.headers.update({
@@ -134,6 +136,82 @@ class TabornikiClient:
         
         return None
     
+    def _extract_inertia_version(self, response):
+        """
+        Extract the Inertia version from a response.
+        
+        The version can be found in:
+        1. JSON responses with a 'version' field
+        2. HTML responses in the data-page attribute of the #app div
+        
+        Args:
+            response: The HTTP response object
+            
+        Returns:
+            The version string if found, None otherwise
+        """
+        if response is None:
+            return None
+        
+        content_type = response.headers.get("Content-Type", "")
+        
+        # Try to extract from JSON response
+        if "application/json" in content_type:
+            try:
+                data = response.json()
+                if isinstance(data, dict) and "version" in data:
+                    logging.debug(f"Extracted Inertia version from JSON: {data.get('version')}")
+                    return data.get("version")
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
+        # Try to extract from HTML response (data-page attribute)
+        if "text/html" in content_type:
+            try:
+                # Look for data-page attribute containing JSON with version
+                match = re.search(r'data-page="([^"]+)"', response.text)
+                if match:
+                    # Unescape HTML entities
+                    page_data = match.group(1).replace("&quot;", '"')
+                    data = json.loads(page_data)
+                    if isinstance(data, dict) and "version" in data:
+                        logging.debug(f"Extracted Inertia version from HTML: {data.get('version')}")
+                        return data.get("version")
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
+        return None
+    
+    def _update_inertia_version(self, response):
+        """
+        Update the Inertia version from a response if a new version is found.
+        
+        Args:
+            response: The HTTP response object
+        """
+        version = self._extract_inertia_version(response)
+        if version and version != self.inertia_version:
+            old_version = self.inertia_version
+            self.inertia_version = version
+            if old_version:
+                logger.info(f"Inertia version updated: {old_version} -> {version}")
+            else:
+                logger.debug(f"Inertia version set: {version}")
+    
+    def _get_inertia_headers(self):
+        """
+        Get headers for Inertia requests.
+        
+        Returns:
+            Dictionary of Inertia-specific headers
+        """
+        headers = {
+            "X-Inertia": "true",
+        }
+        if self.inertia_version:
+            headers["X-Inertia-Version"] = self.inertia_version
+        return headers
+    
     def _is_session_valid(self) -> bool:
         """
         Check if the current session is still valid.
@@ -183,6 +261,9 @@ class TabornikiClient:
             logger.error(self.last_error)
             return self.ERR_SESSION
         
+        # Try to extract Inertia version from login page
+        self._update_inertia_version(response)
+        
         logger.debug("Initial tokens obtained successfully")
         return self.OK
     
@@ -209,8 +290,6 @@ class TabornikiClient:
             "Content-Type": "application/json",
             "Origin": self.BASE_URL,
             "Referer": self.LOGIN_URL,
-            "X-Inertia": "true",
-            "X-Inertia-Version": "ee0ee8477b08a97e13d1494194e001e0",
             "X-Requested-With": "XMLHttpRequest",
             "X-XSRF-TOKEN": xsrf_token,
             "Sec-Fetch-Dest": "empty",
@@ -220,6 +299,8 @@ class TabornikiClient:
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
         }
+        # Add Inertia headers (version may or may not be set yet)
+        headers.update(self._get_inertia_headers())
         
         # Login payload
         payload = {
@@ -255,6 +336,8 @@ class TabornikiClient:
                     self.session_timeout = parsed_timeout
                     logger.info(f"Session timeout set to {parsed_timeout.total_seconds()} seconds from cookie")
                 self._update_session_expiry()
+                # Try to extract Inertia version from redirect response
+                self._update_inertia_version(response)
                 self._fetch_group_access()
                 logger.info("Login successful!")
                 return self.OK
@@ -271,6 +354,10 @@ class TabornikiClient:
                         self.session_timeout = parsed_timeout
                         logger.info(f"Session timeout set to {parsed_timeout.total_seconds()} seconds from cookie")
                     self._update_session_expiry()
+                    # Extract Inertia version from JSON response
+                    if "version" in data:
+                        self.inertia_version = data["version"]
+                        logger.debug(f"Inertia version set from login response: {self.inertia_version}")
                     self._fetch_group_access()
                     logger.info("Login successful!")
                     return self.OK
@@ -326,6 +413,8 @@ class TabornikiClient:
         # Update session expiry on successful request
         if response.ok or response.status_code == 302:
             self._update_session_expiry()
+            # Try to update Inertia version from response
+            self._update_inertia_version(response)
         
         # Check if we got a redirect to login (session expired server-side)
         if response.status_code in (401, 403) or (
@@ -424,12 +513,11 @@ class TabornikiClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "text/html, application/xhtml+xml, application/json",
-            "X-Inertia": "true",
-            "X-Inertia-Version": "ee0ee8477b08a97e13d1494194e001e0",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
         }
+        headers.update(self._get_inertia_headers())
         
         logger.debug(f"Updating membership for member: {member_id}")
         
@@ -459,14 +547,14 @@ class TabornikiClient:
             logger.error(self.last_error)
             return self.ERR_INVALID_INPUT, None
         
-        # Build query string with member_ids[0]=..., member_ids[1]=..., etc.
-        params = {f"member_ids[{i}]": num for i, num in enumerate(member_numbers)}
+        
+        params = {f"member_ids": member_numbers}
         
         url = f"{self.BASE_URL}/api/members"
         
         logger.debug(f"Fetching member details for {len(member_numbers)} members...")
         
-        status, response = self.get(url, params=params)
+        status, response = self.post(url, json=params)
         if status != self.OK:
             return status, None
         
@@ -521,12 +609,11 @@ class TabornikiClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "text/html, application/xhtml+xml, application/json",
-            "X-Inertia": "true",
-            "X-Inertia-Version": "ee0ee8477b08a97e13d1494194e001e0",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
         }
+        headers.update(self._get_inertia_headers())
         
         payload = {"member_ids": member_ids}
         
@@ -544,13 +631,13 @@ class TabornikiClient:
             logger.error(self.last_error)
             return self.ERR_IMPORT_FAILED
     
-    def search_member(self, query, date_of_birth=None):
+    def search_member(self, query, note):
         """
         Search for a member by name/surname.
         
         Args:
             query: Search query (e.g., "Name Surname")
-            date_of_birth: Optional date of birth to match (format: YYYY-MM-DD)
+            note: Note to match
             
         Returns:
             Tuple of (status_code, member dict or None)
@@ -558,10 +645,9 @@ class TabornikiClient:
         url = f"{self.BASE_URL}/members"
         
         headers = {
-            "Accept": "text/html, application/xhtml+xml, application/json",
-            "X-Inertia": "true",
-            "X-Inertia-Version": "ee0ee8477b08a97e13d1494194e001e0",
+            "Accept": "text/html, application/xhtml+xml",
         }
+        headers.update(self._get_inertia_headers())
         
         params = {"filter[q]": query}
         
@@ -588,15 +674,16 @@ class TabornikiClient:
             if len(members) == 1:
                 return self.OK, members[0]
             
-            # Multiple members found - match by date_of_birth if provided
-            
-            if date_of_birth:
+            # Multiple members found - match by note if provided
+            logger.debug(f"Multiple members found ({len(members)}) for query '{query}'")
+            if note:
                 for member in members:
-                    if member.get("date_of_birth") == date_of_birth:
+                    if member.get("note") == note:
+                        logger.debug(f"Member matched by note: {note}")
                         return self.OK, member
-                logger.warning(f"Multiple members found but none match date_of_birth {date_of_birth}")
+                logger.warning(f"Multiple members found but none match note {note}")
             
-            # Return first match if no date_of_birth filter or no match
+            # Return first match if no note filter or no match
             logger.warning(f"Multiple members found ({len(members)}), returning first match")
             return self.OK, members[0]
             
@@ -626,7 +713,7 @@ class TabornikiClient:
         Args:
             name: First name
             surname: Last name
-            sex: "M" or "F"
+            sex: "M", "F" or "O"
             date_of_birth: Date of birth (format: YYYY-MM-DD)
             phone: Phone number (e.g., "+386 12345678")
             email: Email address
@@ -662,13 +749,14 @@ class TabornikiClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "text/html, application/xhtml+xml, application/json",
-            "X-Inertia": "true",
-            "X-Inertia-Version": "ee0ee8477b08a97e13d1494194e001e0",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
         }
-        
+        headers.update(self._get_inertia_headers())
+        note = str(uuid.uuid4())
+        if sex not in ("M", "F", "O"):
+            sex = "O"
         payload = {
             "group_id": self.group_id,
             "name": name,
@@ -701,7 +789,7 @@ class TabornikiClient:
                 
                 # Search for the newly created member to get their number
                 search_query = f"{name} {surname}"
-                search_status, member = self.search_member(search_query, date_of_birth)
+                search_status, member = self.search_member(search_query, note)
                 
                 if search_status == self.OK and member:
                     member_number = member.get("number")
@@ -733,11 +821,13 @@ class TabornikiClient:
             self.session_expiry = None
             self.session_timeout = self.DEFAULT_SESSION_TIMEOUT
             self.group_id = None
+            self.inertia_version = None
             self.session.cookies.clear()
             logger.info("Logged out successfully")
 
 
 def main():
+    load_dotenv()
     """Main function demonstrating usage."""
     client = TabornikiClient(
         email=os.environ.get("CONNECTOR_EMAIL"),
