@@ -25,7 +25,7 @@ from urllib.parse import unquote
 from datetime import datetime, timedelta
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("TabornikiClient")
@@ -375,11 +375,11 @@ class TabornikiClient:
 
         if response.status_code == 200:
             try:
-                data = response.json()
-                group_access = data.get("props", {}).get("auth", {}).get("user", {}).get("group_access")
+                data = response.json()[0]
+                group_access = data.get("id")
                 if group_access:
                     self.group_id = group_access
-                    group_name = data.get("props", {}).get("group", {}).get("name", "Unknown")
+                    group_name = data.get("name", "Unknown")
                     logger.info(f"Group access obtained: {group_name} ({self.group_id})")
                     return self.OK
                 else:
