@@ -440,7 +440,7 @@ class TabornikiClient:
     
     def _fetch_group_access(self):
         """
-        Fetch the group_access ID by making a GET request to /members/create.
+        Fetch the group_access ID by making a GET request to /admin/members/create.
         This should be called after successful login.
         
         Returns:
@@ -607,7 +607,7 @@ class TabornikiClient:
             logger.info(f"  - {member['number']}: {member['name']} {member['surname']} -> {member['id']}")
         
         # Step 2: Make the import POST request
-        url = f"{self.BASE_URL}/membership/import"
+        url = f"{self.BASE_URL}/admin/membership/import"
         
         headers = {
             "Content-Type": "application/json",
@@ -622,7 +622,7 @@ class TabornikiClient:
         
         logger.info(f"Importing membership for {len(member_ids)} members...")
         
-        status, response = self.post(url, json=payload, headers=headers)
+        status, response = self.post(url, json=payload, headers=headers, allow_redirects=False)
         if status != self.OK:
             return status
         
@@ -645,7 +645,7 @@ class TabornikiClient:
         Returns:
             Tuple of (status_code, member dict or None)
         """
-        url = f"{self.BASE_URL}/members"
+        url = f"{self.BASE_URL}/admin/members"
         
         headers = {
             "Accept": "text/html, application/xhtml+xml",
@@ -747,7 +747,7 @@ class TabornikiClient:
         if additional_contacts is None:
             additional_contacts = []
         
-        url = f"{self.BASE_URL}/members"
+        url = f"{self.BASE_URL}/admin/members"
         
         headers = {
             "Content-Type": "application/json",
