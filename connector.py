@@ -29,7 +29,7 @@ import uuid
 
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("TabornikiClient")
@@ -446,26 +446,29 @@ class TabornikiClient:
         Returns:
             Status code (0 = OK, 5 = network error, 8 = permission denied)
         """
-        url = f"{self.BASE_URL}/api/groups"
-        
-        headers = {}
-        
+        url = f"{self.BASE_URL}/admin/members/create"
+
+        headers = {
+            "Accept": "text/html, application/xhtml+xml",
+        }
+        headers.update(self._get_inertia_headers())
+
         logger.debug("Fetching group access...")
-        
+
         try:
             response = self.session.get(url, headers=headers, timeout=30)
         except requests.exceptions.RequestException as e:
             self.last_error = f"Network error fetching group access: {e}"
             logger.error(self.last_error)
             return self.ERR_NETWORK
-        
+
         if response.status_code == 200:
             try:
-                data = response.json()[0]
-                group_access = data.get("id")
+                data = response.json()
+                group_access = data.get("props", {}).get("auth", {}).get("user", {}).get("group_access")
                 if group_access:
                     self.group_id = group_access
-                    group_name = data.get("name", "Unknown")
+                    group_name = data.get("props", {}).get("group", {}).get("name", "Unknown")
                     logger.info(f"Group access obtained: {group_name} ({self.group_id})")
                     return self.OK
                 else:
