@@ -40,7 +40,7 @@ class TabornikiClient:
     
     BASE_URL = "https://baza.taborniki.si"
     LOGIN_URL = f"{BASE_URL}/login"
-    DASHBOARD_URL = f"{BASE_URL}/dashboard"
+    DASHBOARD_URL = f"{BASE_URL}/admin/members"
     
     # Default session timeout (will be updated from cookie Max-Age during login)
     DEFAULT_SESSION_TIMEOUT = timedelta(hours=2)
@@ -198,6 +198,47 @@ class TabornikiClient:
             else:
                 logger.debug(f"Inertia version set: {version}")
     
+    def _check_inertia_errors(self, response):
+        """
+        Check if an Inertia response contains errors.
+        
+        Args:
+            response: The HTTP response object
+            
+        Returns:
+            Tuple of (has_errors: bool, error_message: str or None)
+        """
+        if response is None:
+            return False, None
+        
+        # If it's a redirect without errors, consider it successful
+        if response.status_code == 302:
+            return False, None
+        
+        # Try to parse JSON response
+        try:
+            data = response.json()
+            if isinstance(data, dict):
+                # Check for errors in props
+                props = data.get("props", {})
+                if isinstance(props, dict):
+                    errors = props.get("errors", {})
+                    if errors:
+                        # Format error message from errors dict
+                        error_parts = []
+                        for field, messages in errors.items():
+                            if isinstance(messages, list):
+                                error_parts.append(f"{field}: {', '.join(messages)}")
+                            else:
+                                error_parts.append(f"{field}: {messages}")
+                        error_message = "; ".join(error_parts)
+                        logger.error(f"Inertia errors in response: {error_message}")
+                        return True, error_message
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            pass
+        
+        return False, None
+    
     def _get_inertia_headers(self):
         """
         Get headers for Inertia requests.
@@ -317,7 +358,7 @@ class TabornikiClient:
                 self.LOGIN_URL,
                 json=payload,
                 headers=headers,
-                allow_redirects=False,
+                allow_redirects=True,
                 timeout=30
             )
         except requests.exceptions.RequestException as e:
@@ -325,10 +366,16 @@ class TabornikiClient:
             logger.error(self.last_error)
             return self.ERR_NETWORK
         
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Login failed: {error_message}"
+            logger.error(self.last_error)
+            return self.ERR_LOGIN
+        
         # Check for successful login (302 redirect to dashboard)
         if response.status_code == 302:
             location = response.headers.get("Location", "")
-            if "dashboard" in location or location == self.DASHBOARD_URL:
+            if "admin" in location or location == self.DASHBOARD_URL:
                 self.is_authenticated = True
                 # Update session timeout from cookie Max-Age if available
                 parsed_timeout = self._parse_session_timeout_from_response(response)
@@ -343,7 +390,7 @@ class TabornikiClient:
                 return self.OK
         
         # Check for Inertia response (sometimes login returns 200 with redirect info)
-        if response.status_code == 200:
+        if response.status_code == 200:            
             try:
                 data = response.json()
                 if data.get("component") == "Dashboard" or "props" in data:
@@ -532,7 +579,14 @@ class TabornikiClient:
         if status != self.OK:
             return status
         
-        logger.debug(f"Response status: {response.status_code}")
+        # Check for Inertia errors
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Failed to update membership: {error_message}"
+            logger.error(self.last_error)
+            return self.ERR_UNKNOWN
+        
+        logger.info("Membership update successful")
         return self.OK
     
     def get_members_by_numbers(self, member_numbers):
@@ -563,6 +617,13 @@ class TabornikiClient:
         
         if not response.ok:
             self.last_error = f"Failed to fetch members (status {response.status_code})"
+            logger.error(self.last_error)
+            return self.ERR_NOT_FOUND, None
+        
+        # Check for Inertia errors
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Failed to fetch members: {error_message}"
             logger.error(self.last_error)
             return self.ERR_NOT_FOUND, None
         
@@ -622,9 +683,16 @@ class TabornikiClient:
         
         logger.info(f"Importing membership for {len(member_ids)} members...")
         
-        status, response = self.post(url, json=payload, headers=headers, allow_redirects=False)
+        status, response = self.post(url, json=payload, headers=headers, allow_redirects=True)
         if status != self.OK:
             return status
+        
+        # Check for Inertia errors
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Import failed: {error_message}"
+            logger.error(self.last_error)
+            return self.ERR_IMPORT_FAILED
         
         if response.status_code in (200, 302):
             logger.info(f"Import successful (status {response.status_code})")
@@ -662,6 +730,13 @@ class TabornikiClient:
         
         if response.status_code != 200:
             self.last_error = f"Search failed with status {response.status_code}"
+            logger.error(self.last_error)
+            return self.ERR_NOT_FOUND, None
+        
+        # Check for Inertia errors
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Search failed: {error_message}"
             logger.error(self.last_error)
             return self.ERR_NOT_FOUND, None
         
@@ -778,10 +853,18 @@ class TabornikiClient:
         
         logger.info(f"Creating member: {name} {surname}")
         
-        status, response = self.post(url, json=payload, headers=headers, allow_redirects=False)
+        status, response = self.post(url, json=payload, headers=headers, allow_redirects=True)
         
         if status != self.OK:
             return status, None
+        
+        # Check for Inertia errors
+        
+        has_errors, error_message = self._check_inertia_errors(response)
+        if has_errors:
+            self.last_error = f"Failed to create member: {error_message}"
+            logger.error(self.last_error)
+            return self.ERR_CREATE_FAILED, None
         
         # Check for successful creation (302 redirect)
         if response.status_code == 302:
@@ -851,7 +934,7 @@ def main():
                     name="Demo",
                     surname="User",
                     sex="M",
-                    date_of_birth="2024-11-01",
+                    date_of_birth="2027-11-01",
                     phone="+386 11111",
                     email="uporabnik@posta.si",
                     address="Test ulica 15",
