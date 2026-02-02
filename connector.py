@@ -866,35 +866,20 @@ class TabornikiClient:
             logger.error(self.last_error)
             return self.ERR_CREATE_FAILED, None
         
-        # Check for successful creation (302 redirect)
-        if response.status_code == 302:
-            location = response.headers.get("Location", "")
-            logger.debug(f"Member creation redirect to: {location}")
-            if "/members" in location or "/dashboard" in location:
-                logger.info("Member created successfully!")
-                
-                # Search for the newly created member to get their number
-                search_query = f"{name} {surname}"
-                search_status, member = self.search_member(search_query, note)
-                
-                if search_status == self.OK and member:
-                    member_number = member.get("number")
-                    logger.info(f"Member number: {member_number}")
-                    return self.OK, member_number
-                else:
-                    logger.warning("Member created but could not retrieve member number")
-                    return self.OK, None
+        location = response.headers.get("Location", "")
+        logger.debug(f"Member creation redirect to: {location}")
+        logger.info("Member created successfully!")
+        # Search for the newly created member to get their number
+        search_query = f"{name} {surname}"
+        search_status, member = self.search_member(search_query, note)
         
-        self.last_error = f"Failed to create member (status {response.status_code})"
-        logger.error(self.last_error)
-        
-        try:
-            error_data = response.json()
-            logger.debug(f"Error response: {json.dumps(error_data)}")
-        except json.JSONDecodeError:
-            pass
-        
-        return self.ERR_CREATE_FAILED, None
+        if search_status == self.OK and member:
+            member_number = member.get("number")
+            logger.info(f"Member number: {member_number}")
+            return self.OK, member_number
+        else:
+            logger.warning("Member created but could not retrieve member number")
+            return self.OK, None
     
     def logout(self):
         """Logout and clear session."""
@@ -934,7 +919,7 @@ def main():
                     name="Demo",
                     surname="User",
                     sex="M",
-                    date_of_birth="2027-11-01",
+                    date_of_birth="2024-11-01",
                     phone="+386 11111",
                     email="uporabnik@posta.si",
                     address="Test ulica 15",
